@@ -278,9 +278,9 @@
  deallocate (param_tmp,parnam_tmp,ipower_tmp,ivar_tmp)
  !
  allocate (parold(parmax),parinitial(parmax),last_param(parmax),sterr(parmax),&
-            Tsing(parmax,parmax),Wspace(lwork),crr(parmax),al(parmax,parmax),bl(parmax),&
-            dx(parmax),ai(parmax,parmax),rjacob(enermax,parmax),coord(NDEG,enermax),energy(enermax),&
-            eps(enermax),wt(enermax),wt_tmp(enermax),sigma(enermax),sens(parmax),&
+            Tsing(parmax,parmax),Wspace(lwork),crr(parmax),&
+            coord(NDEG,enermax),energy(enermax),&
+            eps(enermax),wt(enermax),wt_tmp(enermax),sigma(enermax),&
             dV(enermax,parmax),stat=alloc)
  if (alloc/=0) then 
   write(6,"('sens - out of memory')")  
@@ -403,11 +403,11 @@
    enddo 
    !
    if (nused<numpar) then 
-       write(f_out,"('worning! the number of parameter <  the number of data points',2I6)") nused,numpar
-       !stop 'worning! the number of parameter <  the number of data points'
+       write(f_out,"('warning! the number of parameter >  the number of data points',2I6)") nused,numpar
+       !stop 'warning! the number of parameter <  the number of data points'
     endif
    if (nused==numpar) then 
-      write(f_out,"('worning! the same number of parameters and data points')")
+      write(f_out,"('warning! the same number of parameters and data points')")
    endif 
    ncol=0
    do  i=1,parmax
@@ -417,6 +417,19 @@
        endif
    enddo
    !
+   ! number of actual paramters to vary 
+   numpar = ncol 
+   !
+   if (allocated(al)) then 
+     deallocate(al,bl,dx,ai,rjacob,sens)
+   endif
+   !
+   allocate (al(numpar,numpar),bl(numpar),dx(numpar),ai(numpar,numpar),rjacob(enermax,numpar),&
+            sens(parmax),stat=alloc)
+   if (alloc/=0) then 
+    write(6,"('al,bl - out of memory')")  
+    stop 'al,bl - out of memory'
+   endif 
    !
    !##################################################c
    !############ start of the fitting ################c
@@ -515,6 +528,9 @@
          endif
      enddo
      !
+     ! number of actual paramters to vary 
+     numpar = ncol 
+     !
      if (verbose>=6) print*,"...done!"
      !
      allocate (dF(parmax),stat=alloc_p)
@@ -593,7 +609,7 @@
          stop 'fit_type unknown'
        case('linur')
          !
-         call linur(numpar,parmax,al,bl,dx,ierror)
+         call linur(numpar,numpar,al,bl,dx,ierror)
          !
           if (ierror.ne.0) then
             ncol=0
@@ -646,7 +662,7 @@
         !
         ! Calcualte the inverse to A matrix, needed for the standard error of the fitted pot. parameters
         !
-        call invmat(al,ai,numpar,parmax)
+        call invmat(al,ai,numpar,numpar)
         !
         !
         ncol = 0 
@@ -1471,9 +1487,9 @@ do nrow=1,npts
     do_cos = .true.
     itau = ipower(12,iparam)
     !    
-    if (itau>12) then
+    if (itau<0) then
       do_cos = .false.
-      itau = itau-12
+      itau = abs(itau)
     endif
     !
     term = 0
