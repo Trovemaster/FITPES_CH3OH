@@ -79,7 +79,7 @@
  integer           :: ierror,i1,i2,last_i,robustfit
  double precision  :: stab_best,conf_int
  integer           :: maxivar,minivar,tivar
- double precision  :: last_stadev,factor_back,factor_out
+ double precision  :: last_stadev,factor_back,factor_out,fit_scale=1.00d0,gamma_ps,enermax_ps
  double precision  :: rms,ZPE,stadev_best,TEMPE
  integer           :: last_ivar,ndigits,alloc,ipar
  integer           :: i0,l0,parmax,fivar_t,nmax,taumax
@@ -159,6 +159,9 @@
  read (f_inp,*) factor_out
  read (f_inp,*) factor_back
  read (f_inp,*) robustfit
+ read (f_inp,*) fit_scale
+ read (f_inp,*) gamma_ps     ! partridge and schwenke weight: gamma 
+ read (f_inp,*) enermax_ps   ! partridge and schwenke weight: enermax must be positive to employed 
  !
  write(f_out,"(i10,' <= number of degrees of freedom')")         NDEG
  write(f_out,"(i10,' <= number of bonds')")         NBONDS
@@ -343,9 +346,12 @@
  !
  ! We introduce a "zero point energy" shift to avoid loosing accuracy 
  ! because of too too large numbers
- ZPE = 0.0 !energy(1)
+ ZPE = minval(energy(1:npts)) 
+ !
+ write(6,"('Lowest energy = ',g15.9)") ZPE 
+ !
  ! Convert the energies to the internal dimension, e.g. 1/cm 
- energy(:) = ( energy(:)-ZPE )*conv_energy
+ energy(1:npts) = ( energy(1:npts)-ZPE )*conv_energy
  !
  ! For the Robust fit we need to define accuracy of the abinitio data "sigma"
  !
@@ -353,11 +359,18 @@
  !      ADD IN WEIGHTING FUNCTION HERE. NEED TO CHANGE MAX ENERGIES ETC FOR
  !      DIFFERENT WEIGHTING. COULD ADD AS INPUT PARAMETER
  !
- do i = 1, npts
-   tempe = energy(i) - param(nparam_eq+1)
-   !
-   wt(i) = wt(i)*(tanh(-0.0006*( max(tempe,10000.0) - 15000.0)) +1.002002002)/2.002002002
- end do
+ if (enermax_ps>0) then 
+    !
+    do i = 1, npts
+      !
+      tempe = energy(i) ! - param(nparam_eq+1)
+      !tempe = max(tempe,8000.0d0)
+      !
+      wt(i) = (tanh(-gamma_ps*( tempe - enermax_ps)) +1.002002002d0)/2.002002002d0
+      !
+    end do
+    !
+ endif
  ! 
  ! "normalising" the weight factors
  nused=0
@@ -678,7 +691,7 @@
         do i=1,parmax
           if (ivar(i) /= 0) then
              ncol=ncol+1
-             param(i)=param(i)+dx(ncol)
+             param(i)=param(i)+dx(ncol)*fit_scale
           endif
         enddo
         !
@@ -947,7 +960,7 @@
       do i1=1,numpar
         do i2=i1+1,numpar
           corr=ai(i1,i2)/sqrt(abs(ai(i1,i1)*ai(i2,i2)))
-           if (abs(corr) .gt. 0.9) write (f_out,"(10x,'corr(',i2,',',i2,') = ',f10.7)") i1,i2,abs(corr)
+           if (abs(corr) > 0.9) write (f_out,"(10x,'corr(',i4,',',i4,') = ',f10.7)") i1,i2,abs(corr)
         enddo
       enddo
       ! 
@@ -1021,7 +1034,7 @@
             if (verbose>=5) write (f_out,"(' param,number, ivar, st.error ',f18.7,i5,i5,f18.7)") &
                  param(i),i,ivar(i),abs(sterr(l)/param(i))
             !
-            if ( i>nparam_eq.and.abs(param(i))>too_big.and.ivar(i)/=maxivar .and. last_i/=i) then
+            if ( i>nparam_eq.and.(abs(param(i))>too_big.or.param(i)<-too_big*10.0).and.ivar(i)/=maxivar .and. last_i/=i) then
               last_param = param
               last_stadev = stadev
               last_i = i
@@ -1198,34 +1211,35 @@
 
 !--  printing  out the resulted information 
 
-   inquire(f_res,opened=ifopen)
-   if ( ifopen ) then
-     rewind(f_res)
-   else
-     open  (f_res,file='00.res',status='replace' )
-   endif
+ inquire(f_res,opened=ifopen)
+ if ( ifopen ) then
+    rewind(f_res)
+ else
+    open  (f_res,file='00.res',status='replace' )
+ endif
 
-  if (itmax.ne.0) then 
-    write (f_res,"(a80)") (title(i), i=1,4)
-    do i=1,nparam_eq
-       write (f_res,"(a10,21x,i4,2x,f18.8)") parnam(i),ivar(i),param(i)
-    enddo 
-    do i=nparam_eq+1,parmax
+ if (itmax.ne.0) then 
+   write (f_res,"(a80)") (title(i), i=1,4)
+   do i=1,nparam_eq
+      write (f_res,"(a10,21x,i4,2x,f18.8)") parnam(i),ivar(i),param(i)
+   enddo 
+   do i=nparam_eq+1,parmax
+      write (f_res,"(a2,<ndeg>i4,i4,2x,f18.8)") trim(parnam(i)),ipower(1:NDEG,i),ivar(i),param(i)
+   enddo 
+ endif  ! ---- itmax/=0
+  
+ write (f_res,"('------------------------------')")
+ !
+ write (f_res,"(a80)") (title(i), i=1,4)
+ do i=1,nparam_eq
+    write (f_res,"(a10,27x,i4,2x,f18.8)") parnam(i),ivar(i),param(i)
+ enddo 
+ do i=nparam_eq+1,parmax
+    if (ivar(i)/=0.or.abs(param(i))>1e-10) &
        write (f_res,"(a2,<ndeg>i4,i4,2x,f18.8)") trim(parnam(i)),ipower(1:NDEG,i),ivar(i),param(i)
-    enddo 
-  endif  ! ---- itmax/=0
-  
-  write (f_res,"('------------------------------')")
-  !
-  write (f_res,"(a80)") (title(i), i=1,4)
-  do i=1,nparam_eq
-     write (f_res,"(a10,27x,i4,2x,f18.8)") parnam(i),ivar(i),param(i)
-  enddo 
-  do i=nparam_eq+1,parmax
-     write (f_res,"(a2,<ndeg>i4,i4,2x,f18.8)") trim(parnam(i)),ipower(1:NDEG,i),ivar(i),param(i)
-  enddo 
-  
-  
+ enddo 
+ 
+ 
 
 do nrow=1,npts
    !
