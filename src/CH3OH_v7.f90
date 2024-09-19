@@ -346,7 +346,7 @@
  !
  ! We introduce a "zero point energy" shift to avoid loosing accuracy 
  ! because of too too large numbers
- ZPE = minval(energy(1:npts)) 
+ ZPE = 0 ! minval(energy(1:npts)) 
  !
  write(6,"('Lowest energy = ',g15.9)") ZPE 
  !
