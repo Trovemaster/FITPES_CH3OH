@@ -348,7 +348,7 @@
  ! because of too too large numbers
  ZPE = 0 ! minval(energy(1:npts)) 
  !
- write(6,"('Lowest energy = ',g15.9)") ZPE 
+ write(6,"('Lowest energy = ',g15.9)") minval(energy(1:npts))  
  !
  ! Convert the energies to the internal dimension, e.g. 1/cm 
  energy(1:npts) = ( energy(1:npts)-ZPE )*conv_energy
