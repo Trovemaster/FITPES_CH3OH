@@ -363,7 +363,7 @@
     !
     do i = 1, npts
       !
-      tempe = energy(i) ! - param(nparam_eq+1)
+      tempe = energy(i)- param(nparam_eq+1)
       !tempe = max(tempe,8000.0d0)
       !
       wt(i) = (tanh(-gamma_ps*( tempe - enermax_ps)) +1.002002002d0)/2.002002002d0
