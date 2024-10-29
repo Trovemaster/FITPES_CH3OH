@@ -2,7 +2,7 @@
  
   implicit none
   !
-  public do_fitting,lapack_dgesvd
+  public do_fitting,lapack_dgesvd,lapack_sdd_pseudo_inverse
 
   private
 
@@ -112,7 +112,7 @@
  !
  double precision, allocatable :: Tsing(:,:) 
  integer                       :: rank0,info,alloc_p,alloc_p2
- integer                       :: lwork
+ integer                       :: lwork,NumSVD
  double precision,allocatable  :: wspace(:)
  !
  ! Common block is to reduce the number of assignments within the potential routine
@@ -181,7 +181,7 @@
  endif
  !
  fit_type = "linur"
- if (tol>0) fit_type = "SVD"
+ if (tol>0) fit_type = "SDD"
  !
  if (robustfit<0) then 
    find_best_params = .false.
@@ -695,9 +695,16 @@
          !
          dx(1:numpar) = matmul(eps(1:npts)*wt(1:npts),rjacob(1:npts,1:numpar))
          !
-         !still_run = .false.
          !
-         !dx = -dx
+      case ("SDD","sdd")
+         !
+         call lapack_sdd_pseudo_inverse(tol,rjacob(1:npts,1:numpar),NumSVD)
+         !
+         !call dgemv('T',npts,numpar,alpha,rjacob,enermax,eps,1,beta,dx,1) 
+         !
+         dx(1:numpar) = matmul(eps(1:npts)*wt(1:npts),rjacob(1:npts,1:numpar))
+         !
+         write(6,"(/a,1x,i8,1x,a,g12.5)") 'Number of SDD roots = ',NumSVD,'tol = ',tol
          !
        end select
        !
@@ -2284,6 +2291,116 @@ end subroutine diff_V_tau
     end if
     !
   end subroutine lapack_dgesvd  
+  
+  
+  
+    subroutine lapack_sdd_pseudo_inverse(tol,h,Nkeep)
+
+    double precision, intent(in)    :: tol 
+    double precision, intent(inout) :: h(:,:)  ! In:  matrix
+    !                                          ! Out: pseudo-inverse matrix V Sigma- VT
+    integer, intent(out)  :: Nkeep
+    character(len=1) :: jobu,jobvt,jobz
+    !
+    double precision,allocatable    :: work(:),u(:,:),vt(:,:),s(:),v(:,:),ut(:,:),A(:,:)
+    integer,allocatable    :: iwork(:)
+    integer           :: info
+    integer           :: nh1, nh2,i,j,nu1,nu2,nvt1,nvt2,LDVT,LDU
+    integer           :: lwork
+    double precision  :: tol_
+    double precision  :: alpha = 1.0d0,beta=0
+    !
+    jobu  = 'S'
+    jobvt = 'A'
+    jobz  = 'A'
+    !
+    nh1 = size(h,dim=1) ; nh2 = size(h,dim=2)
+    !
+    lwork = 50*nh1
+    !
+    select case (jobz)
+       case('A')
+         LDU = nh1
+         nu1 = nh1
+         nu2 = nh1
+         LDVT = nh2
+         nvt1 = nh2
+         nvt2 = nh2
+       case('S')
+         LDU = nh1
+         nu1 = nh1
+         nu2 = min(nh1,nh2)
+         LDVT = min(nh1,nh2)
+         nvt1 = min(nh1,nh2)
+         nvt2 = nh2
+    end select
+    !
+    allocate(A(nh1,nh2),stat=info)
+    !
+    A = h
+    !
+    allocate(work(lwork),iwork(8*min(nh1,nh2)),u(LDU,nu2),ut(nu2,LDU),vt(LDVT,nvt2),v(nvt2,LDVT),s(min(nh1,nh2)),stat=info)
+    !
+    call dgesdd(jobz,nh1,nh2,A,nh1,s,u,LDU,vt,LDVT,work,-1,iwork,info)
+    !
+    if (int(work(1))>size(work)) then
+      !
+      lwork = int(work(1))
+      !
+      deallocate(work)
+      !
+      allocate(work(lwork))
+      !
+    endif
+    !
+    call dgesdd(jobz,nh1,nh2,A,nh1,s,u,LDU,vt,LDVT,work,lwork,iwork,info)
+    !
+    if (info/=0) then
+      write (6,"(' dgesdd returned ',i8)") info
+      stop 'lapack_dgesdd - dgesvd failed'
+    end if
+    !
+    ! pseudo-inverse 
+    !
+    Nkeep = 0
+    !
+    tol_  = tol*maxval(s,dim=1)
+    !
+    Nkeep = minloc(s,dim=1,mask=s.ge.tol_)
+    !
+    Nkeep = min(Nkeep,nh1)
+    !
+    ut = 0 
+    !
+    do  i = 1,nu1
+      do  j = 1,Nkeep
+         ut(j,i) = U(i,j)/s(j)
+      enddo
+    enddo
+    !
+    !v = transpose(vt)
+    u = transpose(ut)
+    !
+    !ut(1:nh2,:) = matmul(v(1:nh2,1:nkeep),ut(1:Nkeep,:))
+    !
+    !h = 0
+    !
+    !h = transpose(ut)
+    !
+    h(1:LDU,1:nvt2) = matmul(u(1:LDU,1:Nkeep),vt(1:nkeep,1:nvt2))
+    !
+    !call dgemm('T','N',nh2,nh1,nkeep,alpha,vt,nh2,ut,nh2,beta,ut,nh2)
+    !h = transpose(ut)
+    !
+    !call dgemm('T','N',nh1,nkeep,nh2,alpha,ut,nh2,vt,nh2,beta,h,nh1)
+    !
+    deallocate(work,iwork,u,vt,ut,v,s,A)
+    !
+  end subroutine lapack_sdd_pseudo_inverse
+
+
+  
+  
   
   
   end module FITPES_ch3cl
