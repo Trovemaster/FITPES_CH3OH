@@ -43,7 +43,7 @@
  ! 
  ! parameter to control the correlation when we through out the parameters with large st. error (0.0..1.0)
  !
- double precision,parameter :: fact_corr=0.4, too_big = 1e8
+ double precision,parameter :: fact_corr=0.4, too_big = 1e7
  ! 
  ! Watson's alpha parameter to control the Robust fit
  double precision,parameter :: a_wats = 0.1
@@ -372,7 +372,7 @@
       tempe = energy(i)- Ener_min ! param(nparam_eq+1)
       !tempe = max(tempe,8000.0d0)
       !
-      wt(i) = (tanh(-gamma_ps*( tempe - enermax_ps)) +1.002002002d0)/2.002002002d0
+      wt(i) = (tanh(-gamma_ps*( tempe - enermax_ps)) +1.000200020002d0)/2.000200020002d0
       !
     end do
     !
@@ -704,7 +704,9 @@
          !
          dx(1:numpar) = matmul(eps(1:npts)*wt(1:npts),rjacob(1:npts,1:numpar))
          !
-         write(6,"(/a,1x,i8,1x,a,g12.5)") 'Number of SDD roots = ',NumSVD,'tol = ',tol
+         if (iter==1) then 
+           write(6,"(/a,1x,i8,1x,a,g12.5)") 'Number of SDD roots = ',NumSVD,'tol = ',tol
+         endif
          !
        end select
        !
